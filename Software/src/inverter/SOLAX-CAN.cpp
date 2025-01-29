@@ -16,6 +16,9 @@ static unsigned long LastFrameTime = 0;
 static uint8_t number_of_batteries = 1;
 static uint16_t capped_capacity_Wh;
 static uint16_t capped_remaining_capacity_Wh;
+static uint8_t rotate_1877 = 0;
+static uint8_t rotate_187B = 0;
+static uint8_t rotate_187C = 1;
 
 //CAN message translations from this amazing repository: https://github.com/rand12345/solax_can_bus
 
@@ -179,15 +182,42 @@ void update_values_can_inverter() {  //This function maps all the values fetched
 
   //Unknown
   SOLAX_1877.data.u8[4] = (uint8_t)BATTERY_TYPE;  // Battery type (Default 0x50)
-  SOLAX_1877.data.u8[6] = (uint8_t)0x22;          // Firmware version?
-  SOLAX_1877.data.u8[7] =
-      (uint8_t)0x02;  // The above firmware version applies to:02 = Master BMS, 10 = S1, 20 = S2, 30 = S3, 40 = S4
+  if (BATTERY_TYPE == 0x5A)
+  {
+    // 1877 byte 7 is rotatating 01-10-20-30-40
+    // On type 0x5A it seems like the master BMS is 01, not 02. Byte 6 = 0x06
+    // 10-40 maybe modules. Byte 6 = 0x16
+    switch (rotate_1877) {
+      case 0:
+        //BMS
+        SOLAX_1877.data.u8[6] = (uint8_t)0x06;          // Firmware version?
+        SOLAX_1877.data.u8[7] = (uint8_t)0x01;
+
+        rotate_1877++;
+        break;
+      default:
+        //Modules
+        SOLAX_1877.data.u8[6] = (uint8_t)0x16;          // Firmware version?
+        SOLAX_1877.data.u8[7] = rotate_1877 * 10;
+
+        if (rotate_1877 >= NUMBER_OF_MODULES)
+          rotate_1877 = 0;  // Reset rotation
+        else
+          rotate_1877++;
+    }
+  }
+  else
+  {
+    SOLAX_1877.data.u8[6] = (uint8_t)0x22;          // Firmware version?
+    SOLAX_1877.data.u8[7] =
+    (uint8_t)0x02;  // The above firmware version applies to:02 = Master BMS, 10 = S1, 20 = S2, 30 = S3, 40 = S4
+  }
 
   //BMS_PackStats
   SOLAX_1878.data.u8[0] = (uint8_t)(datalayer.battery.status.voltage_dV);
   SOLAX_1878.data.u8[1] = ((datalayer.battery.status.voltage_dV) >> 8);
-
-  SOLAX_1878.data.u8[4] = (uint8_t)datalayer.battery.info.total_capacity_Wh;
+  
+  SOLAX_1878.data.u8[4] = (uint8_t)datalayer.battery.info.total_capacity_Wh; // Correct data should be the sum of total charged and discharged Wh from battery, but doesn't seem to matter.
   SOLAX_1878.data.u8[5] = (datalayer.battery.info.total_capacity_Wh >> 8);
   SOLAX_1878.data.u8[6] = (datalayer.battery.info.total_capacity_Wh >> 16);
   SOLAX_1878.data.u8[7] = (datalayer.battery.info.total_capacity_Wh >> 24);
@@ -198,6 +228,54 @@ void update_values_can_inverter() {  //This function maps all the values fetched
   SOLAX_1801.data.u8[4] = 1;
 
   //Ultra messages
+  if (BATTERY_TYPE == 0x5A)
+  {
+    // This is values that differs from the standard ones defined in Ultra messages above.
+    // To avoid messing up other battery/inverter combinations this is restricted to battery type 0x5A for now
+    // Values used here are logged from a S36 battery with 4 modules where frame 1877 byte 4 = 0x5A and Ultra 25K
+    //
+    // Frames in log that still need some investigation:
+    // 0C0D Unknown source. Always same timestamp as 1300. Byte 0 and 7 changes e.g. 15 3F 05 3F 07 00 00 F4
+    // 1300 From inverter, unknown. Byte 1-6 changes e.g. 00 10 10 5A 00 16 20 88
+    // 1802 Unknown source. Byte 0 changes between 00 and 05, e.g. 05 00 00 00 00 00 00 00
+    // 1871 From inverter. More data available in request from inverter that isn´t used in the emulator
+    // 1879 Unknown source, byte 0-3 changes 01 0A 03 00 01 02 03 01
+    // 1890 Unknown source. Static 10 00 12 00 00 00 00 00. Appears in front of every 187A-E frame, request from inverter? 
+    
+    // Some unknown fixed values, byte 2 is the same as max charge current * 10.
+    SOLAX_187A.data.u8[1] = (uint8_t)0x70;
+    SOLAX_187A.data.u8[2] = (uint8_t)datalayer.battery.status.max_charge_current_dA * 10;
+    SOLAX_187A.data.u8[4] = (uint8_t)0xE0;
+    SOLAX_187A.data.u8[5] = (uint8_t)0x01;
+    SOLAX_187A.data.u8[7] = (uint8_t)0x08;
+
+    SOLAX_187B.data.u8[0] = rotate_187B; // Rotating 00-01-02-03-04. Maybe BMS and modules?
+    SOLAX_187B.data.u8[3] = (uint8_t)0x10;
+    SOLAX_187B.data.u8[6] = (uint8_t)0x48;
+
+    if (rotate_187B >= NUMBER_OF_MODULES)
+      rotate_187B = 0;  // Reset rotation
+    else
+      rotate_187B++;
+
+    SOLAX_187C.data.u8[0] = rotate_187C; // Rotating 01-02-03-04. Maybe modules?
+    //SOLAX_187C.data.u8[1] = (uint8_t)0x88; // Values are changing 28-168, unknown for now
+    //SOLAX_187C.data.u8[2] = (uint8_t)0x13; // Values are changing 19-20, unknown for now
+    //SOLAX_187C.data.u8[3] = (uint8_t)0x00; // Values are changing 87-90, unknown for now. Module SOC?
+    if (rotate_187C >= NUMBER_OF_MODULES)
+      rotate_187C = 1;  // Reset rotation
+    else
+      rotate_187C++;
+
+    // Fixed values, but not the same as defined in Ultra messages above.
+    SOLAX_187D.data.u8[0] = (uint8_t)0x80;
+    SOLAX_187D.data.u8[1] = (uint8_t)0x0C;
+    SOLAX_187D.data.u8[4] = (uint8_t)0x55;
+    SOLAX_187D.data.u8[5] = (uint8_t)0x0C;
+
+    SOLAX_187E.data.u8[4] = (uint8_t)(datalayer.battery.status.soh_pptt / 100);
+  }
+
   SOLAX_187E.data.u8[0] = (uint8_t)datalayer.battery.status.reported_remaining_capacity_Wh;
   SOLAX_187E.data.u8[1] = (datalayer.battery.status.reported_remaining_capacity_Wh >> 8);
   SOLAX_187E.data.u8[2] = (datalayer.battery.status.reported_remaining_capacity_Wh >> 16);
@@ -227,6 +305,12 @@ void map_can_frame_to_variable_inverter(CAN_frame rx_frame) {
         SOLAX_1875.data.u8[4] = (0x00);  // Inform Inverter: Contactor 0=off, 1=on.
         for (uint8_t i = 0; i <= number_of_batteries; i++) {
           transmit_can_frame(&SOLAX_187E, can_config.inverter);
+          if (BATTERY_TYPE == 0x5A)
+          {
+            transmit_can_frame(&SOLAX_187D, can_config.inverter);
+            transmit_can_frame(&SOLAX_187C, can_config.inverter);
+            transmit_can_frame(&SOLAX_187B, can_config.inverter);
+          }
           transmit_can_frame(&SOLAX_187A, can_config.inverter);
           transmit_can_frame(&SOLAX_1872, can_config.inverter);
           transmit_can_frame(&SOLAX_1873, can_config.inverter);
@@ -246,6 +330,12 @@ void map_can_frame_to_variable_inverter(CAN_frame rx_frame) {
       case (WAITING_FOR_CONTACTOR):
         SOLAX_1875.data.u8[4] = (0x00);  // Inform Inverter: Contactor 0=off, 1=on.
         transmit_can_frame(&SOLAX_187E, can_config.inverter);
+        if (BATTERY_TYPE == 0x5A)
+          {
+            transmit_can_frame(&SOLAX_187D, can_config.inverter);
+            transmit_can_frame(&SOLAX_187C, can_config.inverter);
+            transmit_can_frame(&SOLAX_187B, can_config.inverter);
+          }
         transmit_can_frame(&SOLAX_187A, can_config.inverter);
         transmit_can_frame(&SOLAX_1872, can_config.inverter);
         transmit_can_frame(&SOLAX_1873, can_config.inverter);
@@ -254,7 +344,8 @@ void map_can_frame_to_variable_inverter(CAN_frame rx_frame) {
         transmit_can_frame(&SOLAX_1876, can_config.inverter);
         transmit_can_frame(&SOLAX_1877, can_config.inverter);
         transmit_can_frame(&SOLAX_1878, can_config.inverter);
-        transmit_can_frame(&SOLAX_1801, can_config.inverter);  // Announce that the battery will be connected
+        if (BATTERY_TYPE != 0x5A) // Cant see this at all in the logs, trying to omit.
+          transmit_can_frame(&SOLAX_1801, can_config.inverter);  // Announce that the battery will be connected
         STATE = CONTACTOR_CLOSED;                              // Jump to Contactor Closed State
 #ifdef DEBUG_LOG
         logging.println("Solax Battery State: Contactor Closed");
@@ -265,6 +356,12 @@ void map_can_frame_to_variable_inverter(CAN_frame rx_frame) {
         datalayer.system.status.inverter_allows_contactor_closing = true;
         SOLAX_1875.data.u8[4] = (0x01);  // Inform Inverter: Contactor 0=off, 1=on.
         transmit_can_frame(&SOLAX_187E, can_config.inverter);
+        if (BATTERY_TYPE == 0x5A)
+          {
+            transmit_can_frame(&SOLAX_187D, can_config.inverter);
+            transmit_can_frame(&SOLAX_187C, can_config.inverter);
+            transmit_can_frame(&SOLAX_187B, can_config.inverter);
+          }
         transmit_can_frame(&SOLAX_187A, can_config.inverter);
         transmit_can_frame(&SOLAX_1872, can_config.inverter);
         transmit_can_frame(&SOLAX_1873, can_config.inverter);
@@ -284,8 +381,33 @@ void map_can_frame_to_variable_inverter(CAN_frame rx_frame) {
   }
 
   if (rx_frame.ID == 0x1871 && rx_frame.data.u64 == __builtin_bswap64(0x0500010000000000)) {
-    transmit_can_frame(&SOLAX_1881, can_config.inverter);
-    transmit_can_frame(&SOLAX_1882, can_config.inverter);
+    if (BATTERY_TYPE == 0x5A)
+    {
+      // BMS serial number
+      SOLAX_1881.data = {0x0, 0x48, 0x53, 0x32, 0x35, 0x41, 0x4A, 0x41}; // HS25AJA
+      SOLAX_1882.data = {0x0, 0x31, 0x32, 0x41, 0x42, 0x33, 0x34, 0x35}; // 12AB345
+
+      transmit_can_frame(&SOLAX_1881, can_config.inverter);
+      transmit_can_frame(&SOLAX_1882, can_config.inverter);
+
+      // Battery modules serial numbers
+      SOLAX_1881.data = {0x0, 0x48, 0x53, 0x33, 0x36, 0x42, 0x4A, 0x42}; // HS36BJB
+      SOLAX_1882.data = {0x0, 0x31, 0x32, 0x41, 0x42, 0x33, 0x34, 0x35}; // 12AB345
+
+      for (int i = 1; i < NUMBER_OF_MODULES+1; i++)
+      {
+        SOLAX_1881.data.u8[0] = (uint8_t)i;
+        SOLAX_1882.data.u8[0] = (uint8_t)i;
+
+        transmit_can_frame(&SOLAX_1881, can_config.inverter);
+        transmit_can_frame(&SOLAX_1882, can_config.inverter);
+      }
+    }
+    else
+    {
+      transmit_can_frame(&SOLAX_1881, can_config.inverter);
+      transmit_can_frame(&SOLAX_1882, can_config.inverter);
+    }
 #ifdef DEBUG_LOG
     logging.println("1871 05-frame received from inverter");
 #endif
