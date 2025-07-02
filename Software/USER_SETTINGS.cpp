@@ -14,7 +14,7 @@ CANFD_ADDON_MCP2518 = Add-on CAN-FD MCP2518 connected to GPIO pins
 */
 
 volatile CAN_Configuration can_config = {
-    .battery = CAN_NATIVE,   // Which CAN is your battery connected to?
+    .battery = CANFD_NATIVE,   // Which CAN is your battery connected to?
     .inverter = CAN_NATIVE,  // Which CAN is your inverter connected to? (No need to configure incase you use RS485)
     .battery_double = CAN_ADDON_MCP2515,  // (OPTIONAL) Which CAN is your second battery connected to?
     .charger = CAN_NATIVE,                // (OPTIONAL) Which CAN is your charger connected to?
@@ -23,7 +23,7 @@ volatile CAN_Configuration can_config = {
 
 std::string ssid = WIFI_SSID;             // Set in USER_SECRETS.h
 std::string password = WIFI_PASSWORD;     // Set in USER_SECRETS.h
-const char* ssidAP = "Battery Emulator";  // Maximum of 63 characters, also used for device name on web interface
+const char* ssidAP = "BE2";               // Maximum of 63 characters, also used for device name on web interface
 const char* passwordAP = AP_PASSWORD;     // Set in USER_SECRETS.h
 const uint8_t wifi_channel = 0;           // Set to 0 for automatic channel selection
 
@@ -42,13 +42,13 @@ const char* mqtt_user = MQTT_USER;          // Set in USER_SECRETS.h
 const char* mqtt_password = MQTT_PASSWORD;  // Set in USER_SECRETS.h
 #ifdef MQTT_MANUAL_TOPIC_OBJECT_NAME
 const char* mqtt_topic_name =
-    "BE";  // Custom MQTT topic name. Previously, the name was automatically set to "battery-emulator_esp32-XXXXXX"
+    "BE2";  // Custom MQTT topic name. Previously, the name was automatically set to "battery-emulator_esp32-XXXXXX"
 const char* mqtt_object_id_prefix =
-    "be_";  // Custom prefix for MQTT object ID. Previously, the prefix was automatically set to "esp32-XXXXXX_"
+    "be2_";  // Custom prefix for MQTT object ID. Previously, the prefix was automatically set to "esp32-XXXXXX_"
 const char* mqtt_device_name =
-    "Battery Emulator";  // Custom device name in Home Assistant. Previously, the name was automatically set to "BatteryEmulator_esp32-XXXXXX"
+    "Battery Emulator 2";  // Custom device name in Home Assistant. Previously, the name was automatically set to "BatteryEmulator_esp32-XXXXXX"
 const char* ha_device_id =
-    "battery-emulator";  // Custom device ID in Home Assistant. Previously, the ID was always "battery-emulator"
+    "battery-emulator_2";  // Custom device ID in Home Assistant. Previously, the ID was always "battery-emulator"
 #endif                   // MQTT_MANUAL_TOPIC_OBJECT_NAME
 #endif                   // USE_MQTT
 

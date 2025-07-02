@@ -8,7 +8,7 @@
 #include "BYD-ATTO-3-HTML.h"
 #include "CanBattery.h"
 
-#define USE_ESTIMATED_SOC  // If enabled, SOC is estimated from pack voltage. Useful for locked packs. \
+//#define USE_ESTIMATED_SOC  // If enabled, SOC is estimated from pack voltage. Useful for locked packs. \
                            // Comment out this only if you know your BMS is unlocked and able to send SOC%
 #define MAXPOWER_CHARGE_W 10000
 #define MAXPOWER_DISCHARGE_W 10000
@@ -63,11 +63,11 @@ class BydAttoBattery : public CanBattery {
  private:
   static const int CELLCOUNT_EXTENDED = 126;
   static const int CELLCOUNT_STANDARD = 104;
-  static const int MAX_PACK_VOLTAGE_EXTENDED_DV = 4410;  //Extended range
+  static const int MAX_PACK_VOLTAGE_EXTENDED_DV = 4550;  //Extended range
   static const int MIN_PACK_VOLTAGE_EXTENDED_DV = 3800;  //Extended range
   static const int MAX_PACK_VOLTAGE_STANDARD_DV = 3640;  //Standard range
   static const int MIN_PACK_VOLTAGE_STANDARD_DV = 3136;  //Standard range
-  static const int MAX_CELL_DEVIATION_MV = 230;
+  static const int MAX_CELL_DEVIATION_MV = 300;
   static const int MAX_CELL_VOLTAGE_MV = 3650;  //Charging stops if one cell exceeds this value
   static const int MIN_CELL_VOLTAGE_MV = 2800;  //Discharging stops if one cell goes below this value
 
@@ -117,7 +117,7 @@ class BydAttoBattery : public CanBattery {
   uint32_t BMS_unknown1 = 0;
   uint16_t BMS_allowed_charge_power = 0;
   uint16_t BMS_unknown3 = 0;
-  uint16_t BMS_unknown4 = 0;
+  uint16_t BMS_allowed_discharge_power = 0;
   uint16_t BMS_total_charged_ah = 0;
   uint16_t BMS_total_discharged_ah = 0;
   uint16_t BMS_total_charged_kwh = 0;

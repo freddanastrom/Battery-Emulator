@@ -196,7 +196,7 @@ typedef struct {
   uint32_t unknown1 = 0;
   uint16_t chargePower = 0;
   uint16_t unknown3 = 0;
-  uint16_t unknown4 = 0;
+  uint16_t dischargePower = 0;
   uint16_t total_charged_ah = 0;
   uint16_t total_discharged_ah = 0;
   uint16_t total_charged_kwh = 0;

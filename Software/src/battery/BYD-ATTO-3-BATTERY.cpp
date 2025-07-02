@@ -22,7 +22,7 @@ After battery has been unlocked, you can remove the "USE_ESTIMATED_SOC" from the
 #define UNKNOWN_POLL_1 0x1FFC  //0x72 1F C4 3B
 #define POLL_MAX_CHARGE_POWER 0x000A
 #define UNKNOWN_POLL_3 0x000B  //0x00B1 (177 interesting!)
-#define UNKNOWN_POLL_4 0x000E  //0x0B27 (2855 interesting!)
+#define POLL_MAX_DISCHARGE_POWER 0x000E
 #define POLL_TOTAL_CHARGED_AH 0x000F
 #define POLL_TOTAL_DISCHARGED_AH 0x0010
 #define POLL_TOTAL_CHARGED_KWH 0x0011
@@ -172,9 +172,18 @@ void BydAttoBattery::
   datalayer_battery->status.remaining_capacity_Wh = static_cast<uint32_t>(
       (static_cast<double>(datalayer_battery->status.real_soc) / 10000) * datalayer_battery->info.total_capacity_Wh);
 
-  datalayer_battery->status.max_discharge_power_W = MAXPOWER_DISCHARGE_W;  //TODO: Map from CAN later on
+  datalayer_battery->status.max_discharge_power_W = BMS_allowed_discharge_power * 100;
 
-  datalayer_battery->status.max_charge_power_W = BMS_allowed_charge_power * 10;  //TODO: Scaling unknown, *10 best guess
+  datalayer_battery->status.max_charge_power_W = BMS_allowed_charge_power * 100;
+
+  if(BMS_allowed_charge_power * 100 < 1000){ //Fully charged, start float charge
+    //If the cellvoltages start to reach overvoltage, only allow a small amount of power in
+    //if (BMS_highest_cell_voltage_mV > (MAX_CELL_VOLTAGE_MV - FLOAT_START_MV)) {
+    //  datalayer.battery.status.max_charge_power_W = FLOAT_MAX_POWER_W;
+    //} else {
+    datalayer_battery->status.max_charge_power_W = 1000;
+    //}
+  }
 
   datalayer_battery->status.cell_max_voltage_mV = BMS_highest_cell_voltage_mV;
 
@@ -278,7 +287,7 @@ void BydAttoBattery::
     datalayer_bydatto->unknown1 = BMS_unknown1;
     datalayer_bydatto->chargePower = BMS_allowed_charge_power;
     datalayer_bydatto->unknown3 = BMS_unknown3;
-    datalayer_bydatto->unknown4 = BMS_unknown4;
+    datalayer_bydatto->dischargePower = BMS_allowed_discharge_power;
     datalayer_bydatto->total_charged_ah = BMS_total_charged_ah;
     datalayer_bydatto->total_discharged_ah = BMS_total_discharged_ah;
     datalayer_bydatto->total_charged_kwh = BMS_total_charged_kwh;
@@ -442,8 +451,8 @@ void BydAttoBattery::handle_incoming_can_frame(CAN_frame rx_frame) {
         case UNKNOWN_POLL_3:
           BMS_unknown3 = (rx_frame.data.u8[5] << 8) | rx_frame.data.u8[4];
           break;
-        case UNKNOWN_POLL_4:
-          BMS_unknown4 = (rx_frame.data.u8[5] << 8) | rx_frame.data.u8[4];
+        case POLL_MAX_DISCHARGE_POWER:
+          BMS_allowed_discharge_power = (rx_frame.data.u8[5] << 8) | rx_frame.data.u8[4];
           break;
         case POLL_TOTAL_CHARGED_AH:
           BMS_total_charged_ah = (rx_frame.data.u8[5] << 8) | rx_frame.data.u8[4];
@@ -620,11 +629,11 @@ void BydAttoBattery::transmit_can(unsigned long currentMillis) {
       case UNKNOWN_POLL_3:
         ATTO_3_7E7_POLL.data.u8[2] = (uint8_t)((UNKNOWN_POLL_3 & 0xFF00) >> 8);
         ATTO_3_7E7_POLL.data.u8[3] = (uint8_t)(UNKNOWN_POLL_3 & 0x00FF);
-        poll_state = UNKNOWN_POLL_4;
+        poll_state = POLL_MAX_DISCHARGE_POWER;
         break;
-      case UNKNOWN_POLL_4:
-        ATTO_3_7E7_POLL.data.u8[2] = (uint8_t)((UNKNOWN_POLL_4 & 0xFF00) >> 8);
-        ATTO_3_7E7_POLL.data.u8[3] = (uint8_t)(UNKNOWN_POLL_4 & 0x00FF);
+      case POLL_MAX_DISCHARGE_POWER:
+        ATTO_3_7E7_POLL.data.u8[2] = (uint8_t)((POLL_MAX_DISCHARGE_POWER & 0xFF00) >> 8);
+        ATTO_3_7E7_POLL.data.u8[3] = (uint8_t)(POLL_MAX_DISCHARGE_POWER & 0x00FF);
         poll_state = POLL_TOTAL_CHARGED_AH;
         break;
       case POLL_TOTAL_CHARGED_AH:

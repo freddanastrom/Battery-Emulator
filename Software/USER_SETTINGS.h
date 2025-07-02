@@ -14,7 +14,7 @@
 //#define BMW_IX_BATTERY
 //#define BMW_PHEV_BATTERY
 //#define BOLT_AMPERA_BATTERY
-//#define BYD_ATTO_3_BATTERY
+#define BYD_ATTO_3_BATTERY
 //#define FOXESS_BATTERY
 //#define CELLPOWER_BMS
 //#define CHADEMO_BATTERY	//NOTE: inherently enables CONTACTOR_CONTROL below
@@ -71,7 +71,7 @@
 
 /* Select hardware used for Battery-Emulator */
 //#define HW_LILYGO
-//#define HW_STARK
+#define HW_STARK
 //#define HW_3LB
 //#define HW_DEVKIT
 
@@ -110,10 +110,10 @@
 /* CAN options */
 //#define CAN_ADDON              //Enable this line to activate an isolated secondary CAN Bus using add-on MCP2515 chip (Needed for some inverters / double battery)
 #define CRYSTAL_FREQUENCY_MHZ 8  //CAN_ADDON option, what is your MCP2515 add-on boards crystal frequency?
-//#define CANFD_ADDON           //Enable this line to activate an isolated secondary CAN-FD bus using add-on MCP2518FD chip / Native CANFD on Stark board
+#define CANFD_ADDON           //Enable this line to activate an isolated secondary CAN-FD bus using add-on MCP2518FD chip / Native CANFD on Stark board
 #define CANFD_ADDON_CRYSTAL_FREQUENCY_MHZ \
   ACAN2517FDSettings::OSC_40MHz  //CANFD_ADDON option, what is your MCP2518 add-on boards crystal frequency?
-//#define USE_CANFD_INTERFACE_AS_CLASSIC_CAN // Enable this line if you intend to use the CANFD as normal CAN
+#define USE_CANFD_INTERFACE_AS_CLASSIC_CAN // Enable this line if you intend to use the CANFD as normal CAN
 
 /* Connectivity options */
 #define WIFI
@@ -125,7 +125,7 @@
 //#define FUNCTION_TIME_MEASUREMENT  // Enable this to record execution times and present them in the web UI (WARNING, raises CPU load, do not use for production)
 
 /* MQTT options */
-// #define MQTT     // Enable this line to enable MQTT
+#define MQTT     // Enable this line to enable MQTT
 #define MQTT_QOS 0                  // MQTT Quality of Service (0, 1, or 2)
 #define MQTT_PUBLISH_CELL_VOLTAGES  // Enable this line to publish cell voltages to MQTT
 #define MQTT_TIMEOUT 2000           // MQTT timeout in milliseconds
@@ -139,10 +139,10 @@
 #define HA_AUTODISCOVERY  // Enable this line to send Home Assistant autodiscovery messages. If not enabled manual configuration of Home Assitant is required
 
 /* Battery settings */
-// Predefined total energy capacity of the battery in Watt-hours (updates automatically from battery data when available)
-#define BATTERY_WH_MAX 30000
+// Predefined total energy capacity of the battery in Watt-hours
+#define BATTERY_WH_MAX 60000
 // Increases battery life. If true will rescale SOC between the configured min/max-percentage
-#define BATTERY_USE_SCALED_SOC true
+#define BATTERY_USE_SCALED_SOC false
 // 8000 = 80.0% , Max percentage the battery will charge to (Inverter gets 100% when reached)
 #define BATTERY_MAXPERCENTAGE 8000
 // 2000 = 20.0% , Min percentage the battery will discharge to (Inverter gets 0% when reached)
