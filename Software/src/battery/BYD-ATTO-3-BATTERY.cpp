@@ -949,6 +949,7 @@ void BydAttoBattery::confirm_charge_termination() {
       balancingStateMillis = millis();
     }
   }
+  start_balance_scan_session();
   set_event(EVENT_BYD_CHARGE_TERMINATED, (uint8_t)(spread_mV / 10));
   DEBUG_PRINTF("[BYD] Battery ended the charge at %umV, cell spread %umV\n", cell_max_mV, spread_mV);
 }
@@ -1241,6 +1242,106 @@ void BydAttoBattery::handle_balancing(unsigned long currentMillis) {
     }
   }
   datalayer_bydatto->balancing_remaining_min = remaining;
+}
+
+// Balancing carries on for the best part of a day after the pack is closed again, with cells
+// joining as it goes. Nothing on the bus says so, but the per-cell lifetime hour counters tick
+// while a cell bleeds, so an hourly re-read tells which cells were busy over the last hour.
+void BydAttoBattery::start_balance_scan_session() {
+  balanceSessionActive = true;
+  balanceBaselineValid = false;
+  balanceQuietScans = 0;
+  balanceSessionStartMillis = millis();
+  balanceScanMillis = balanceSessionStartMillis - BALANCE_SCAN_INTERVAL_MS;  // baseline once the pack is free
+}
+
+void BydAttoBattery::end_balance_scan_session() {
+  balanceSessionActive = false;
+  balanceBaselineValid = false;
+  balanceQuietScans = 0;
+  memset(datalayer_battery->status.cell_balancing_status, 0,
+         sizeof(datalayer_battery->status.cell_balancing_status));
+  datalayer_battery->status.balancing_status = BALANCING_STATUS_READY;
+}
+
+void BydAttoBattery::handle_balance_scan_schedule(unsigned long currentMillis) {
+  if (!balanceSessionActive) {
+    return;
+  }
+  if (currentMillis - balanceSessionStartMillis >= BALANCE_SESSION_MAX_MS) {
+    end_balance_scan_session();
+    return;
+  }
+  // Never ask mid contactor cycle: the open waits on the scan finishing, and a slow scan would eat
+  // the arming window and leave the pack closed.
+  if (balancingState != BALANCING_IDLE && balancingState != BALANCING_CLOSE_FAILED) {
+    return;
+  }
+  if (currentMillis - balanceScanMillis < BALANCE_SCAN_INTERVAL_MS) {
+    return;
+  }
+  if (request_cell_balance_times()) {  // refused while another 0x7E7 job holds the bus, retried next tick
+    balanceScanMillis = currentMillis;
+  }
+}
+
+// Cells whose lifetime counter rose since the last scan were bleeding in between. That is the only
+// "balancing now" this pack offers, so it feeds the generic per-cell flags.
+void BydAttoBattery::apply_balance_scan_diff() {
+  const uint8_t cells = cell_balance_time_data.expected_cells;
+
+  if (!balanceBaselineValid) {
+    for (uint8_t i = 0; i < cells; i++) {
+      if (cell_balance_time_data.cell_valid(i)) {
+        balance_hours_prev[i] = cell_balance_time_data.hours[i];
+      }
+    }
+    balanceBaselineMillis = millis();
+    balanceBaselineValid = true;
+    return;
+  }
+
+  // A manual read landing between two scheduled ones would diff against minutes instead of an hour
+  // and call every cell quiet. Leave the baseline for the scheduled scan.
+  if (millis() - balanceBaselineMillis < BALANCE_DIFF_MIN_MS) {
+    return;
+  }
+
+  bool counters_reset = false;
+  for (uint8_t i = 0; i < cells; i++) {
+    if (cell_balance_time_data.cell_valid(i) && cell_balance_time_data.hours[i] < balance_hours_prev[i]) {
+      counters_reset = true;
+      break;
+    }
+  }
+
+  uint16_t risen = 0;
+  for (uint8_t i = 0; i < cells; i++) {
+    if (!cell_balance_time_data.cell_valid(i)) {
+      continue;  // unread this round: keep the old baseline and the old flag
+    }
+    const uint16_t hours = cell_balance_time_data.hours[i];
+    const bool rose = !counters_reset && hours > balance_hours_prev[i];
+    datalayer_battery->status.cell_balancing_status[i] = rose;
+    balance_hours_prev[i] = hours;
+    if (rose) {
+      risen++;
+    }
+  }
+  balanceBaselineMillis = millis();
+
+  if (counters_reset) {
+    balanceQuietScans = 0;  // rebuilt against the new counters, no usable diff this round
+    return;
+  }
+  if (risen) {
+    balanceQuietScans = 0;
+    datalayer_battery->status.balancing_status = BALANCING_STATUS_ACTIVE;
+  } else if (++balanceQuietScans >= BALANCE_SCAN_QUIET_LIMIT) {
+    end_balance_scan_session();
+  } else {
+    datalayer_battery->status.balancing_status = BALANCING_STATUS_READY;
+  }
 }
 
 void BydAttoBattery::transmit_charge_session(unsigned long currentMillis) {
@@ -1562,6 +1663,9 @@ void BydAttoBattery::finish_cell_balance_time_scan() {
   } else {
     cell_balance_time_data.state = BydCellBalanceTimeState::FAILED;
   }
+  if (balanceSessionActive && cell_balance_time_data.state != BydCellBalanceTimeState::FAILED) {
+    apply_balance_scan_diff();
+  }
   cell_balance_time_requested.store(false);
 }
 
@@ -1663,6 +1767,7 @@ void BydAttoBattery::transmit_can(unsigned long currentMillis) {
     handle_contactor_control(currentMillis);
     handle_charge_session(currentMillis);
     handle_balancing(currentMillis);
+    handle_balance_scan_schedule(currentMillis);
 
     // Byte 6 = rolling counter (high nibble counts up, low nibble 0xF), byte 7 = checksum
     frame6_counter = (frame6_counter + 1) & 0x0F;
