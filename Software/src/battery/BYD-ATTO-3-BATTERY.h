@@ -244,6 +244,10 @@ class BydAttoBattery : public CanBattery {
   static const uint32_t BALANCE_SESSION_MAX_MS = 20UL * 3600000UL;
   static const uint32_t BALANCE_DIFF_MIN_MS = 3000000UL;  // 50min: a closer scan cannot show an hour tick
   static const uint8_t BALANCE_SCAN_QUIET_LIMIT = 3;
+  // Nothing on the bus says whether a run is already under way when the emulator boots, so probe
+  // for it: a baseline once the pack is up, a second read far enough out that a live cell must tick.
+  static const uint32_t BALANCE_PROBE_START_MS = 120000UL;
+  static const uint32_t BALANCE_PROBE_INTERVAL_MS = 7200000UL;
 
   uint16_t rampdown_power = 0;
   uint16_t poll_state = POLL_FOR_ORIGINAL_CALIBRATION;
@@ -427,6 +431,8 @@ class BydAttoBattery : public CanBattery {
   uint8_t balanceQuietScans = 0;
   bool balanceSessionActive = false;
   bool balanceBaselineValid = false;
+  bool balanceProbePending = false;
+  bool balanceProbeDone = false;
   bool chargeSessionTerminated = false;  // last session ended on a grant edge, not an interruption
   bool chargeTerminatedRails = false;    // rails stay lifted after the session ends, until cells relax
   bool chargeSessionHeartbeat = false;
@@ -449,7 +455,7 @@ class BydAttoBattery : public CanBattery {
 
   void handle_charge_session(unsigned long currentMillis);
   void handle_balancing(unsigned long currentMillis);
-  void start_balance_scan_session();
+  void start_balance_scan_session(bool probe);
   void handle_balance_scan_schedule(unsigned long currentMillis);
   void apply_balance_scan_diff();
   void end_balance_scan_session();

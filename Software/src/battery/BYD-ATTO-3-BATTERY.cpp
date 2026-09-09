@@ -949,7 +949,7 @@ void BydAttoBattery::confirm_charge_termination() {
       balancingStateMillis = millis();
     }
   }
-  start_balance_scan_session();
+  start_balance_scan_session(false);
   set_event(EVENT_BYD_CHARGE_TERMINATED, (uint8_t)(spread_mV / 10));
   DEBUG_PRINTF("[BYD] Battery ended the charge at %umV, cell spread %umV\n", cell_max_mV, spread_mV);
 }
@@ -1247,12 +1247,16 @@ void BydAttoBattery::handle_balancing(unsigned long currentMillis) {
 // Balancing carries on for the best part of a day after the pack is closed again, with cells
 // joining as it goes. Nothing on the bus says so, but the per-cell lifetime hour counters tick
 // while a cell bleeds, so an hourly re-read tells which cells were busy over the last hour.
-void BydAttoBattery::start_balance_scan_session() {
+void BydAttoBattery::start_balance_scan_session(bool probe) {
   balanceSessionActive = true;
   balanceBaselineValid = false;
   balanceQuietScans = 0;
+  balanceProbePending = probe;
+  balanceProbeDone = true;  // a real session answers the same question, so it supersedes the probe
   balanceSessionStartMillis = millis();
-  balanceScanMillis = balanceSessionStartMillis - BALANCE_SCAN_INTERVAL_MS;  // baseline once the pack is free
+  // Back-dated past the longest interval so the baseline goes out at once, while a scan that fails
+  // still waits a full interval before the next try instead of hammering a pack that will not answer.
+  balanceScanMillis = balanceSessionStartMillis - BALANCE_PROBE_INTERVAL_MS;
 }
 
 void BydAttoBattery::end_balance_scan_session() {
@@ -1265,6 +1269,11 @@ void BydAttoBattery::end_balance_scan_session() {
 }
 
 void BydAttoBattery::handle_balance_scan_schedule(unsigned long currentMillis) {
+  // A run started before the last reboot is still invisible, and leaving the status unknown for the
+  // rest of it is worse than spending one probe finding out.
+  if (!balanceSessionActive && !balanceProbeDone && currentMillis >= BALANCE_PROBE_START_MS) {
+    start_balance_scan_session(true);
+  }
   if (!balanceSessionActive) {
     return;
   }
@@ -1277,7 +1286,10 @@ void BydAttoBattery::handle_balance_scan_schedule(unsigned long currentMillis) {
   if (balancingState != BALANCING_IDLE && balancingState != BALANCING_CLOSE_FAILED) {
     return;
   }
-  if (currentMillis - balanceScanMillis < BALANCE_SCAN_INTERVAL_MS) {
+  // The probe waits longer than the hourly cadence: a cell that only bleeds part of the time can sit
+  // out a single hour, and a false "nothing balancing" would stand until the next charge.
+  const uint32_t interval = balanceProbePending ? BALANCE_PROBE_INTERVAL_MS : BALANCE_SCAN_INTERVAL_MS;
+  if (currentMillis - balanceScanMillis < interval) {
     return;
   }
   if (request_cell_balance_times()) {  // refused while another 0x7E7 job holds the bus, retried next tick
@@ -1333,6 +1345,13 @@ void BydAttoBattery::apply_balance_scan_diff() {
   if (counters_reset) {
     balanceQuietScans = 0;  // rebuilt against the new counters, no usable diff this round
     return;
+  }
+  if (balanceProbePending) {
+    balanceProbePending = false;
+    if (!risen) {
+      end_balance_scan_session();  // no run in progress: say so rather than leaving the status unknown
+      return;
+    }
   }
   if (risen) {
     balanceQuietScans = 0;
