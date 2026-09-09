@@ -1254,6 +1254,11 @@ void BydAttoBattery::start_balance_scan_session(bool probe) {
   balanceProbePending = probe;
   balanceProbeDone = true;  // a real session answers the same question, so it supersedes the probe
   balanceSessionStartMillis = millis();
+  // The pack just hit full, which is when it balances, but the first counter read is an hour out.
+  // Say so rather than showing nothing until then. The probe has no such expectation to report.
+  if (!probe) {
+    datalayer_battery->status.balancing_status = BALANCING_STATUS_BLOCKED;
+  }
   // Back-dated past the longest interval so the baseline goes out at once, while a scan that fails
   // still waits a full interval before the next try instead of hammering a pack that will not answer.
   balanceScanMillis = balanceSessionStartMillis - BALANCE_PROBE_INTERVAL_MS;
@@ -1359,7 +1364,9 @@ void BydAttoBattery::apply_balance_scan_diff() {
   } else if (++balanceQuietScans >= BALANCE_SCAN_QUIET_LIMIT) {
     end_balance_scan_session();
   } else {
-    datalayer_battery->status.balancing_status = BALANCING_STATUS_READY;
+    // A quiet hour inside a run is not the end of it: a cell that bleeds part of the time skips
+    // whole hours, and flipping to ready in between would read as balancing having stopped.
+    datalayer_battery->status.balancing_status = BALANCING_STATUS_BLOCKED;
   }
 }
 
