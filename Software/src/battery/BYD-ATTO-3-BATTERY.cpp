@@ -949,7 +949,6 @@ void BydAttoBattery::confirm_charge_termination() {
       balancingStateMillis = millis();
     }
   }
-  start_balance_scan_session(false);
   set_event(EVENT_BYD_CHARGE_TERMINATED, (uint8_t)(spread_mV / 10));
   DEBUG_PRINTF("[BYD] Battery ended the charge at %umV, cell spread %umV\n", cell_max_mV, spread_mV);
 }
@@ -1138,6 +1137,7 @@ void BydAttoBattery::handle_balancing(unsigned long currentMillis) {
   if (!datalayer_bydatto) {
     return;
   }
+  const uint8_t balancingStateAtEntry = balancingState;
   const bool enabled = datalayer_bydatto->balancing_enabled && datalayer_battery == &datalayer.battery;
   const bool pack_closed = (contactor_feedback & BMS_FEEDBACK_MAIN_CLOSED) != 0;
   // Still closed only because the open has not finished yet, which is not the same as closed.
@@ -1231,6 +1231,13 @@ void BydAttoBattery::handle_balancing(unsigned long currentMillis) {
       break;
     default:
       break;
+  }
+
+  // The BMS only starts balancing once the pack has been cycled, so the end of the hold - however
+  // it ends - is the first moment a run can be under way. Nothing before that is worth scanning for.
+  if (balancingStateAtEntry == BALANCING_WAITING && balancingState != BALANCING_WAITING &&
+      !datalayer.system.info.equipment_stop_active) {
+    start_balance_scan_session(false);
   }
 
   datalayer_bydatto->balancing_state = balancingState;
