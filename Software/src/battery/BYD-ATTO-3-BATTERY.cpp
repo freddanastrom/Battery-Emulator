@@ -251,9 +251,9 @@ void BydAttoBattery::
     datalayer_battery->status.max_charge_power_W = 0;
   }
 
-  // Hold power at zero until the pack confirms closed (0x344 bit7), and while opening/idle
-  if (!(contactor_feedback & BMS_FEEDBACK_MAIN_CLOSED) ||
-      (contactorState != CONTACTORS_CLOSING && contactorState != CONTACTORS_ACTIVE)) {
+  // Hold power at zero while opening. Once the pack confirms open (0x344 bit7) the BMS limits pass through
+  if ((contactor_feedback & BMS_FEEDBACK_MAIN_CLOSED) && contactorState != CONTACTORS_CLOSING &&
+      contactorState != CONTACTORS_ACTIVE) {
     datalayer_battery->status.max_charge_power_W = 0;
     datalayer_battery->status.max_discharge_power_W = 0;
   }
